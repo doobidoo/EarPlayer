@@ -1,23 +1,25 @@
 use super::backend::AudioBackend;
 use anyhow::Result;
-use rodio::{OutputStream, Sink, Source};
+use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub struct SynthBackend {
     _stream: OutputStream,
-    sink: Arc<Mutex<Sink>>,
+    stream_handle: OutputStreamHandle,
+    sinks: Arc<Mutex<Vec<Sink>>>,
     active_notes: Arc<Mutex<Vec<u8>>>,
 }
 
 impl SynthBackend {
     pub fn new() -> Result<Self> {
         let (stream, stream_handle) = OutputStream::try_default()?;
-        let sink = Sink::try_new(&stream_handle)?;
 
         Ok(Self {
             _stream: stream,
-            sink: Arc::new(Mutex::new(sink)),
+            stream_handle,
+            sinks: Arc::new(Mutex::new(Vec::new())),
             active_notes: Arc::new(Mutex::new(Vec::new())),
         })
     }
@@ -30,17 +32,20 @@ impl SynthBackend {
 impl AudioBackend for SynthBackend {
     fn play_note(&mut self, note: u8, velocity: u8) -> Result<()> {
         let frequency = Self::midi_to_frequency(note);
-        let amplitude = (velocity as f32 / 127.0) * 0.2;
+        let amplitude = (velocity as f32 / 127.0) * 0.3;
 
-        let sink = self.sink.lock().unwrap();
+        // Create a new sink for each note so we can stop them independently
+        let sink = Sink::try_new(&self.stream_handle)?;
 
+        // Use an ADSR-like envelope for more musical sound
         let source = SineWave::new(frequency)
             .amplify(amplitude)
-            .fade_in(Duration::from_millis(10))
-            .take_duration(Duration::from_secs(10));
+            .fade_in(Duration::from_millis(5))
+            .take_duration(Duration::from_millis(2000));
 
         sink.append(source);
 
+        self.sinks.lock().unwrap().push(sink);
         self.active_notes.lock().unwrap().push(note);
 
         Ok(())
@@ -60,8 +65,11 @@ impl AudioBackend for SynthBackend {
     }
 
     fn stop_all(&mut self) -> Result<()> {
-        let sink = self.sink.lock().unwrap();
-        sink.stop();
+        // Stop and clear all sinks
+        let mut sinks = self.sinks.lock().unwrap();
+        for sink in sinks.drain(..) {
+            sink.stop();
+        }
         self.active_notes.lock().unwrap().clear();
         Ok(())
     }

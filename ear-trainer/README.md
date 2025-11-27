@@ -187,8 +187,74 @@ Connects to the first available MIDI port on your system. Use with:
 
 If no MIDI ports are available, the application will notify you and MIDI output will be disabled.
 
+#### Bluetooth MIDI Setup (Linux)
+
+To use Bluetooth MIDI devices, you need to install and configure BLE MIDI support:
+
+**1. Install required packages:**
+```bash
+# Arch/Manjaro
+sudo pacman -S bluez bluez-utils
+
+# Debian/Ubuntu
+sudo apt install bluez bluez-tools
+```
+
+**2. Enable Bluetooth service:**
+```bash
+sudo systemctl enable bluetooth
+sudo systemctl start bluetooth
+```
+
+**3. Pair your Bluetooth MIDI device:**
+```bash
+bluetoothctl
+# Inside bluetoothctl:
+power on
+agent on
+scan on
+# Wait for your device to appear, note the MAC address
+pair XX:XX:XX:XX:XX:XX
+connect XX:XX:XX:XX:XX:XX
+trust XX:XX:XX:XX:XX:XX
+exit
+```
+
+**4. For BLE MIDI (most modern MIDI controllers), use one of these methods:**
+
+**Option A: PipeWire (recommended for modern systems):**
+PipeWire with WirePlumber handles BLE MIDI automatically. Check if it's already working:
+```bash
+pw-link -o | grep -i midi
+```
+
+**Option B: bluez-alsa (for ALSA-based setups):**
+```bash
+# Arch/Manjaro
+yay -S bluez-alsa-git
+
+# Start the service
+sudo systemctl enable bluealsa
+sudo systemctl start bluealsa
+```
+
+**Option C: ble2midi (standalone BLE MIDI bridge):**
+```bash
+# Install from AUR or build from source
+yay -S ble2midi-git
+# Or use: https://github.com/oxesoft/ble2midi
+```
+
+**5. Verify MIDI ports:**
+```bash
+aconnect -l
+# Your BT MIDI device should appear as a client
+```
+
 ### Synthesis (Built-in)
 Uses Rodio for audio playback with simple sine wave synthesis. Works out of the box without any external MIDI setup.
+
+**Note:** The synthesis backend outputs to your system's default audio device via PulseAudio/PipeWire/ALSA.
 
 ## Technical Details
 
