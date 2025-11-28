@@ -1,6 +1,6 @@
 [package]
 name = "ear-trainer"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 description = "Terminal-based music ear training application"
 repository = "https://github.com/doobidoo/EarPlayer"
