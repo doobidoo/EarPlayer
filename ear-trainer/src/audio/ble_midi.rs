@@ -183,6 +183,24 @@ impl BleMidiBackend {
         Ok(backend)
     }
 
+    /// Create a dummy backend that doesn't do anything (for fallback when BLE is unavailable)
+    pub fn new_dummy() -> Self {
+        let runtime = Runtime::new().expect("Tokio runtime required");
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        Self {
+            runtime: Arc::new(runtime),
+            adapter: Arc::new(TokioMutex::new(None)),
+            peripheral: Arc::new(TokioMutex::new(None)),
+            state: Arc::new(TokioMutex::new(BleConnectionState::Disconnected)),
+            event_tx,
+            event_rx: Arc::new(TokioMutex::new(event_rx)),
+            should_reconnect: Arc::new(AtomicBool::new(false)),
+            connected_device_name: Arc::new(TokioMutex::new(None)),
+            preferred_device_address: Arc::new(TokioMutex::new(None)),
+        }
+    }
+
     fn init_adapter(&self) -> Result<()> {
         let adapter = self.adapter.clone();
         let event_tx = self.event_tx.clone();

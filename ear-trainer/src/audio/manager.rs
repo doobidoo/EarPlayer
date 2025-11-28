@@ -307,6 +307,26 @@ impl AudioManager {
 
 impl Default for AudioManager {
     fn default() -> Self {
-        Self::new().expect("Failed to create audio manager")
+        match Self::new() {
+            Ok(manager) => manager,
+            Err(e) => {
+                eprintln!("Warning: Failed to create audio manager: {}. Using fallback.", e);
+                // Create a minimal fallback with synth only
+                let config = AudioConfig::load();
+                Self {
+                    midi_backend: MidiBackend::default(),
+                    synth_backend: SynthBackend::new().expect("Synth backend required"),
+                    ble_midi_backend: BleMidiBackend::new().unwrap_or_else(|_| {
+                        // Create a dummy BLE backend that won't do anything
+                        eprintln!("BLE MIDI unavailable");
+                        BleMidiBackend::new_dummy()
+                    }),
+                    active_backend: ActiveBackend::Synth,
+                    config,
+                    ble_status: BleStatus::default(),
+                    auto_scan_started: false,
+                }
+            }
+        }
     }
 }

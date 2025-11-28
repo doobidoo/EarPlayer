@@ -1,5 +1,6 @@
 use crate::audio::{ActiveBackend, AudioManager, BleStatus};
 use crate::music::{Chord, ChordScaleMatcher, Progression, ProgressionLibrary, Scale};
+use super::timeline::TimelineState;
 use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +26,8 @@ pub struct App {
     pub chord_duration_ms: u64,
     pub current_beat: f32,
     pub selected_genre_idx: usize,
+    /// Timeline state for piano roll visualization
+    pub timeline_state: TimelineState,
 }
 
 impl App {
@@ -37,7 +40,7 @@ impl App {
         // Start BLE scanning in background
         audio_manager.start_ble_scan();
 
-        Self {
+        let mut app = Self {
             mode: AppMode::Listen,
             audio_manager,
             library,
@@ -53,6 +56,20 @@ impl App {
             chord_duration_ms: 2000,
             current_beat: 0.0,
             selected_genre_idx: 0,
+            timeline_state: TimelineState::new(),
+        };
+        app.refresh_timeline();
+        app
+    }
+
+    /// Refresh the timeline state from the current progression
+    pub fn refresh_timeline(&mut self) {
+        if let Some(prog) = self.current_progression() {
+            self.timeline_state = TimelineState::from_progression(
+                prog,
+                self.current_chord_idx,
+                self.current_beat,
+            );
         }
     }
 
@@ -78,6 +95,7 @@ impl App {
             self.current_progression_idx = (self.current_progression_idx + 1) % progs.len();
             self.current_chord_idx = 0;
             self.stop();
+            self.refresh_timeline();
         }
     }
 
@@ -90,6 +108,7 @@ impl App {
             }
             self.current_chord_idx = 0;
             self.stop();
+            self.refresh_timeline();
         }
     }
 
@@ -100,6 +119,7 @@ impl App {
         self.current_progression_idx = 0;
         self.current_chord_idx = 0;
         self.stop();
+        self.refresh_timeline();
     }
 
     pub fn prev_genre(&mut self) {
@@ -113,6 +133,7 @@ impl App {
         self.current_progression_idx = 0;
         self.current_chord_idx = 0;
         self.stop();
+        self.refresh_timeline();
     }
 
     pub fn play(&mut self) {
@@ -183,6 +204,9 @@ impl App {
             } else {
                 false
             };
+
+            // Update timeline state with current playback position
+            self.timeline_state.update(self.current_chord_idx, self.current_beat);
 
             if should_change {
                 self.next_chord();

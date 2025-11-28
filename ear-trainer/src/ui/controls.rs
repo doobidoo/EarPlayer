@@ -19,6 +19,9 @@ pub fn handle_input(app: &mut App, key: KeyEvent) -> bool {
         KeyCode::Char('1') => app.mode = AppMode::Listen,
         KeyCode::Char('2') => app.mode = AppMode::Practice,
         KeyCode::Char('3') => app.mode = AppMode::Quiz,
+        // Timeline scroll controls
+        KeyCode::Char('[') | KeyCode::Left => app.timeline_state.scroll(-4.0),
+        KeyCode::Char(']') | KeyCode::Right => app.timeline_state.scroll(4.0),
         _ => {}
     }
     true

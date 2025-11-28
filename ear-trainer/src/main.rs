@@ -83,21 +83,65 @@ fn ui(f: &mut Frame, app: &App) {
         return;
     }
 
+    // Adaptive layout based on terminal height
+    let terminal_height = f.size().height;
+
+    if terminal_height < 30 {
+        // Compact layout for small terminals
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([
+                Constraint::Length(3),  // Header
+                Constraint::Min(8),     // Main content
+                Constraint::Length(3),  // Status bar
+            ])
+            .split(f.size());
+
+        render_header(f, app, chunks[0]);
+        render_main_content(f, app, chunks[1]);
+        render_status_bar(f, app, chunks[2]);
+    } else {
+        // Full layout with piano roll panel
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .margin(1)
+            .constraints([
+                Constraint::Length(3),   // Header
+                Constraint::Percentage(35), // Piano Roll Panel (NEW)
+                Constraint::Min(8),      // Main content
+                Constraint::Length(3),   // Status bar
+            ])
+            .split(f.size());
+
+        render_header(f, app, chunks[0]);
+        render_piano_roll_panel(f, app, chunks[1]);
+        render_main_content(f, app, chunks[2]);
+        render_status_bar(f, app, chunks[3]);
+    }
+}
+
+fn render_piano_roll_panel(f: &mut Frame, app: &App, area: Rect) {
+    // Split the panel: timeline piano roll on top, keyboard reference on bottom
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .margin(1)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Main content
-            Constraint::Length(12), // Chord analysis
-            Constraint::Length(3),  // Status bar
+            Constraint::Min(6),      // Timeline piano roll (takes most space)
+            Constraint::Length(5),   // Horizontal keyboard reference
         ])
-        .split(f.size());
+        .split(area);
 
-    render_header(f, app, chunks[0]);
-    render_main_content(f, app, chunks[1]);
-    render_chord_analysis(f, app, chunks[2]);
-    render_status_bar(f, app, chunks[3]);
+    // Render enhanced piano roll with timeline
+    let enhanced_roll = ui::EnhancedPianoRoll::new(&app.timeline_state)
+        .with_voice_leading(app.show_voice_leading);
+    f.render_widget(enhanced_roll, chunks[0]);
+
+    // Render horizontal keyboard reference
+    if let (Some(chord), Some(scale)) = (app.current_chord(), app.current_scale()) {
+        let keyboard = ui::HorizontalKeyboard::new(chord, &scale)
+            .with_range(48, 2); // 2 octaves starting from C3
+        f.render_widget(keyboard, chunks[1]);
+    }
 }
 
 fn render_header(f: &mut Frame, app: &App, area: Rect) {
@@ -147,15 +191,14 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
 fn render_main_content(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
         .split(area);
 
-    if let (Some(chord), Some(scale)) = (app.current_chord(), app.current_scale()) {
-        let piano_roll = ui::render_piano_roll(chord, &scale);
-        f.render_widget(piano_roll, chunks[0]);
-    }
+    // Left side: Progression list
+    render_progression_list(f, app, chunks[0]);
 
-    render_progression_list(f, app, chunks[1]);
+    // Right side: Chord analysis (moved here from separate panel)
+    render_chord_analysis(f, app, chunks[1]);
 }
 
 fn render_progression_list(f: &mut Frame, app: &App, area: Rect) {
@@ -339,7 +382,8 @@ fn render_help(f: &mut Frame, app: &App) {
             Span::styled("Display Options:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         ]),
         Line::from("  s          - Toggle scale display"),
-        Line::from("  v          - Toggle voice leading"),
+        Line::from("  v          - Toggle voice leading arrows"),
+        Line::from("  [/]        - Scroll timeline left/right"),
         Line::from("  m          - Cycle audio: MIDI -> Synth -> BLE MIDI"),
         Line::from("  b          - Force BLE MIDI rescan"),
         Line::from("  h          - Toggle this help screen"),
