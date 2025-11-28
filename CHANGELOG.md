@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2025-11-28
+
+### Added
+- feat: add BLE MIDI support, improve synth audio, update docs
+- feat: implement terminal-based music ear training application
+
+### Changed
+- docs: add trigger-release script and update contributing guide
+- chore: remove Claude API dependency from release workflow
+- chore: add semantic versioning and release automation
+
+### Fixed
+- fix: correct rust-toolchain action name in release workflow
+- fix: synth backend audio and add Bluetooth MIDI docs
+
 ## [0.2.0] - 2024-11-28
 
 ### Added
@@ -41,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Music theory engine with chord-scale matching
 - Interactive keyboard controls for playback and navigation
 
-[Unreleased]: https://github.com/doobidoo/EarPlayer/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/doobidoo/EarPlayer/compare/v0.2.1...HEAD
 [0.2.0]: https://github.com/doobidoo/EarPlayer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/doobidoo/EarPlayer/releases/tag/v0.1.0
+[0.2.1]: https://github.com/doobidoo/EarPlayer/compare/v0.2.0...v0.2.1
