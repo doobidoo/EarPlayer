@@ -10,13 +10,37 @@ A comprehensive terminal-based music ear training application built in Rust that
 - **BLE MIDI**: Automatic Bluetooth Low Energy MIDI for wireless controllers (MD-BT01, WIDI, etc.)
 - Cycle through modes at runtime with the 'm' key
 
+### LEGO Bricks Jazz Harmony System
+Based on Conrad Cork's approach to jazz harmony, breaking standards into reusable patterns:
+- **14 Named Bricks**: Launcher, Sad Launcher, Dizzy, Overrun, Pennies, Raindrop, Long Approach, Honeysuckle, Rhythm, Nowhere, Surprise, Starlight, Countdown, So What
+- **8 Key Transition Joins**: Sidewinder, High Jump, Cherokee, Giant Steps, Stairway, Ladybird, Moment's Notice, Back Door
+- **Circle of Fourths Navigation**: Understanding key relationships
+- **Jazz Standards Analysis**: See how Autumn Leaves, All The Things You Are, Blue Bossa, and Rhythm Changes break down into bricks
+
 ### Music Theory Engine
-- 40+ pre-built progressions across 5 genres:
+- 50+ pre-built progressions across 6 genres (including LEGO Bricks):
   - **Jazz**: ii-V-I variations, Coltrane changes, rhythm changes, turnarounds
   - **Soul**: Motown progressions, neo-soul, gospel-influenced
   - **Funk**: Dorian vamps, modal funk, chromatic progressions
   - **Smooth Jazz**: Extended ii-V-I, lydian sounds, fusion styles
   - **Pop**: I-V-vi-IV, Beatles-style, modal pop
+  - **LEGO Bricks**: Named chord patterns in multiple keys
+
+### Jazz Voicings
+- **5 Professional Voicing Types**:
+  - Full (all chord tones)
+  - Shell (3rd and 7th only)
+  - Rootless A (Bill Evans style: 3-5-7-9)
+  - Rootless B (inverted: 7-9-3-5)
+  - Drop 2 (second voice dropped an octave)
+- Cycle through voicings with `V` key
+
+### Swing Timing
+- Toggle swing feel with `w` key
+- Cycle swing ratios with `W`:
+  - Straight (0.5)
+  - Light swing (0.58)
+  - Hard swing (0.67)
 
 ### Intelligent Chord-Scale Matching
 - Automatic scale/mode selection for each chord type:
@@ -45,9 +69,17 @@ A comprehensive terminal-based music ear training application built in Rust that
    - Tempo and key information
 
 ### Learning Modes
-- **Listen Mode**: Play progressions and observe chord tone movement
-- **Practice Mode**: Practice along with visual guides (planned)
-- **Quiz Mode**: Test your ear for chord tone identification (planned)
+- **Listen Mode** (`1`): Play progressions and observe chord tone movement
+- **Practice Mode** (`2`): Practice along with visual guides
+- **Quiz Mode** (`3`): Test your ear for chord tone identification
+- **LEGO Listen Mode** (`4`): Browse and learn individual brick patterns
+  - Cycle through bricks with `n`/`p`
+  - Change key with `k`/`K`
+  - Adjust difficulty with `d`
+- **LEGO Quiz Mode** (`5`): Identify bricks by ear
+  - Multiple choice quiz (1-4 to answer)
+  - Score tracking with accuracy and streaks
+  - Three difficulty levels: Beginner, Intermediate, Advanced
 
 ## Installation
 
@@ -86,10 +118,22 @@ cargo run --release
 - `1` - Listen mode
 - `2` - Practice mode
 - `3` - Quiz mode
+- `4` - LEGO Listen mode
+- `5` - LEGO Quiz mode
 
-#### Display Options
+#### LEGO Mode Controls
+- `n`/`p` - Next/Previous brick (Listen mode)
+- `k`/`K` - Next/Previous key (Listen mode)
+- `d` - Cycle difficulty level
+- `1`-`4` - Answer quiz question (Quiz mode)
+- `ESC` - Exit LEGO mode
+
+#### Display & Sound Options
 - `s` - Toggle scale display
 - `v` - Toggle voice leading analysis
+- `V` - Cycle voicing type (Full/Shell/RootlessA/RootlessB/Drop2)
+- `w` - Toggle swing feel
+- `W` - Cycle swing ratio (Straight/Light/Hard)
 - `m` - Cycle audio mode (MIDI -> Synth -> BLE MIDI)
 - `b` - Force BLE MIDI rescan
 - `h` - Toggle help screen
@@ -299,12 +343,18 @@ ear-trainer/
 │   │   ├── chord.rs         - Chord representation
 │   │   ├── scale.rs         - Scale/mode definitions
 │   │   ├── progression.rs   - Progression library
-│   │   └── theory.rs        - Voice leading analysis
+│   │   ├── theory.rs        - Voice leading analysis
+│   │   ├── bricks.rs        - LEGO Bricks patterns
+│   │   ├── joins.rs         - Key transition patterns
+│   │   ├── voicings.rs      - Jazz voicing algorithms
+│   │   └── standards.rs     - Jazz standard breakdowns
 │   ├── ui/
 │   │   ├── app.rs           - Application state
 │   │   ├── piano_roll.rs    - Piano visualization
 │   │   ├── notation.rs      - Chord analysis view
-│   │   └── controls.rs      - Input handling
+│   │   ├── controls.rs      - Input handling
+│   │   └── lego_mode.rs     - LEGO training mode UI
+│   ├── storage.rs           - Progress persistence
 │   └── config.rs            - Configuration
 └── Cargo.toml
 ```
@@ -332,6 +382,20 @@ ear-trainer/
 4. Press `m` again to switch to built-in synthesis
 5. Compare the sound and latency
 
+### Learn LEGO Bricks
+1. Press `4` to enter LEGO Listen mode
+2. Press `n`/`p` to cycle through bricks
+3. Press `SPACE` to hear each brick pattern
+4. Press `k`/`K` to transpose to different keys
+5. Notice how each brick is a reusable harmonic unit
+
+### Test Your Ears with LEGO Quiz
+1. Press `5` to enter LEGO Quiz mode
+2. Press `SPACE` to hear the mystery brick
+3. Press `1`-`4` to select your answer
+4. Track your accuracy and build streaks
+5. Press `d` to increase difficulty as you improve
+
 ## Troubleshooting
 
 ### No MIDI Output
@@ -353,19 +417,23 @@ ear-trainer/
 
 ## Future Enhancements
 
+### Completed Features (v0.4.0)
+- [x] Quiz mode for ear training tests (LEGO Quiz)
+- [x] Swing feel implementation
+- [x] Jazz voicing options (5 types)
+- [x] Progress tracking and persistence
+
 ### Planned Features
 - [ ] Custom progression builder
 - [ ] Random progression generator with musical logic
 - [ ] Interactive practice mode with user input
-- [ ] Quiz mode for ear training tests
 - [ ] Fretboard visualization for guitar/bass
 - [ ] Standard notation rendering
 - [ ] MIDI file export
 - [ ] Configuration file support
-- [ ] Multiple voice leading options
 - [ ] Rhythm visualization
-- [ ] Swing feel implementation
 - [ ] Microtonal exploration
+- [ ] More jazz standards breakdowns
 
 ## Contributing
 
