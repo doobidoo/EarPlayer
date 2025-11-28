@@ -101,6 +101,23 @@ fn ui(f: &mut Frame, app: &App) {
 }
 
 fn render_header(f: &mut Frame, app: &App, area: Rect) {
+    use crate::audio::BleConnectionState;
+
+    // Determine audio status color based on BLE state
+    let (audio_text, audio_color) = {
+        let status = app.audio_status_line();
+        let ble_status = app.ble_status();
+
+        let color = match ble_status.state {
+            BleConnectionState::Connected => Color::Green,
+            BleConnectionState::Scanning | BleConnectionState::Connecting => Color::Yellow,
+            BleConnectionState::Reconnecting(_) => Color::Yellow,
+            BleConnectionState::Disconnected => Color::Magenta,
+        };
+
+        (status, color)
+    };
+
     let title = vec![
         Span::styled(
             "♫ EAR TRAINER ♫",
@@ -116,10 +133,7 @@ fn render_header(f: &mut Frame, app: &App, area: Rect) {
         ),
         Span::raw("  |  "),
         Span::styled("Audio: ", Style::default().fg(Color::Gray)),
-        Span::styled(
-            format!("{:?}", app.audio_mode),
-            Style::default().fg(Color::Magenta),
-        ),
+        Span::styled(audio_text, Style::default().fg(audio_color)),
         Span::raw("  |  Press 'h' for help"),
     ];
 
@@ -208,6 +222,12 @@ fn render_chord_analysis(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
+    let ble_status = app.ble_status();
+
+    // Check if there are BLE prerequisite issues to show
+    let has_prereq_issues = !ble_status.prerequisites.is_empty()
+        && ble_status.prerequisites.iter().any(|p| !p.passed);
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Length(1), Constraint::Length(1)])
@@ -225,25 +245,42 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
         AppMode::Quiz => "Quiz Mode",
     };
 
-    let status_line = Line::from(vec![
-        playback_status,
-        Span::raw("  |  "),
-        Span::styled("Mode: ", Style::default().fg(Color::Gray)),
-        Span::styled(mode_text, Style::default().fg(Color::Cyan)),
-        Span::raw("  |  "),
-        Span::styled("Beat: ", Style::default().fg(Color::Gray)),
-        Span::styled(
-            format!("{:.1}", app.current_beat),
-            Style::default().fg(Color::Yellow),
-        ),
-    ]);
+    // Build status line - show BLE issues if any, otherwise normal status
+    let status_line = if has_prereq_issues {
+        let mut spans = vec![
+            Span::styled("BLE Issues: ", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+        ];
+        for prereq in &ble_status.prerequisites {
+            if !prereq.passed {
+                spans.push(Span::styled(
+                    format!("[{}] ", prereq.message),
+                    Style::default().fg(Color::Yellow),
+                ));
+            }
+        }
+        Line::from(spans)
+    } else {
+        Line::from(vec![
+            playback_status,
+            Span::raw("  |  "),
+            Span::styled("Mode: ", Style::default().fg(Color::Gray)),
+            Span::styled(mode_text, Style::default().fg(Color::Cyan)),
+            Span::raw("  |  "),
+            Span::styled("Beat: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{:.1}", app.current_beat),
+                Style::default().fg(Color::Yellow),
+            ),
+        ])
+    };
 
     let controls_line = Line::from(vec![
         Span::styled("Controls: ", Style::default().fg(Color::Gray)),
-        Span::raw("SPACE=Play/Pause  "),
-        Span::raw("n/p=Next/Prev  "),
-        Span::raw("g/G=Genre  "),
-        Span::raw("m=Audio Mode  "),
+        Span::raw("SPACE=Play  "),
+        Span::raw("n/p=Prog  "),
+        Span::raw("g=Genre  "),
+        Span::raw("m=Audio  "),
+        Span::raw("b=BLE Scan  "),
         Span::raw("q=Quit"),
     ]);
 
@@ -303,7 +340,8 @@ fn render_help(f: &mut Frame, app: &App) {
         ]),
         Line::from("  s          - Toggle scale display"),
         Line::from("  v          - Toggle voice leading"),
-        Line::from("  m          - Toggle MIDI/Synthesis audio"),
+        Line::from("  m          - Cycle audio: MIDI -> Synth -> BLE MIDI"),
+        Line::from("  b          - Force BLE MIDI rescan"),
         Line::from("  h          - Toggle this help screen"),
         Line::from(""),
         Line::from(vec![

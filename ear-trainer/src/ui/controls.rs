@@ -10,6 +10,7 @@ pub fn handle_input(app: &mut App, key: KeyEvent) -> bool {
         KeyCode::Char('g') => app.next_genre(),
         KeyCode::Char('G') => app.prev_genre(),
         KeyCode::Char('m') => app.toggle_audio_mode(),
+        KeyCode::Char('b') => app.force_ble_rescan(), // Force BLE rescan
         KeyCode::Char('h') => app.show_help = !app.show_help,
         KeyCode::Char('s') => app.show_scales = !app.show_scales,
         KeyCode::Char('v') => app.show_voice_leading = !app.show_voice_leading,

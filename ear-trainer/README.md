@@ -4,10 +4,11 @@ A comprehensive terminal-based music ear training application built in Rust that
 
 ## Features
 
-### Dual Audio Output System
+### Triple Audio Output System
 - **MIDI Output**: Send notes to external synthesizers or DAWs
-- **Built-in Synthesis**: Standalone audio generation using sine wave synthesis
-- Switchable at runtime with the 'm' key
+- **Built-in Synthesis**: Standalone audio generation using piano-like synthesis
+- **BLE MIDI**: Automatic Bluetooth Low Energy MIDI for wireless controllers (MD-BT01, WIDI, etc.)
+- Cycle through modes at runtime with the 'm' key
 
 ### Music Theory Engine
 - 40+ pre-built progressions across 5 genres:
@@ -89,7 +90,8 @@ cargo run --release
 #### Display Options
 - `s` - Toggle scale display
 - `v` - Toggle voice leading analysis
-- `m` - Toggle between MIDI and Synthesis audio
+- `m` - Cycle audio mode (MIDI -> Synth -> BLE MIDI)
+- `b` - Force BLE MIDI rescan
 - `h` - Toggle help screen
 
 #### Other
@@ -178,7 +180,7 @@ The application shows which tensions are available for each chord:
 
 ## Audio Backends
 
-### MIDI Output
+### 1. MIDI Output
 Connects to the first available MIDI port on your system. Use with:
 - External hardware synthesizers
 - DAWs (Ableton, Logic, FL Studio)
@@ -187,74 +189,92 @@ Connects to the first available MIDI port on your system. Use with:
 
 If no MIDI ports are available, the application will notify you and MIDI output will be disabled.
 
-#### Bluetooth MIDI Setup (Linux)
+### 2. Synthesis (Built-in)
+Uses Rodio for audio playback with piano-like synthesis. Works out of the box without any external MIDI setup.
 
-To use Bluetooth MIDI devices, you need to install and configure BLE MIDI support:
+Features:
+- Multi-oscillator sound with harmonics for richer timbre
+- ADSR envelope for natural attack and release
+- Anti-aliasing for clean high frequencies
 
-**1. Install required packages:**
+**Note:** The synthesis backend outputs to your system's default audio device via PulseAudio/PipeWire/ALSA.
+
+### 3. BLE MIDI (Automatic)
+
+The app includes built-in BLE MIDI support that automatically:
+- Scans for BLE MIDI devices on startup
+- Connects to devices with MIDI-related names (MD-BT01, WIDI, Yamaha, Roland, Korg, CME)
+- Reconnects automatically if connection is lost
+- Shows connection status in the header (Green=Connected, Yellow=Scanning, Magenta=Disconnected)
+
+**Supported Devices:**
+- Yamaha MD-BT01 (wireless MIDI adapter)
+- CME WIDI series
+- Any device advertising BLE MIDI service
+
+**Prerequisites:**
 ```bash
 # Arch/Manjaro
 sudo pacman -S bluez bluez-utils
 
 # Debian/Ubuntu
-sudo apt install bluez bluez-tools
+sudo apt install bluez
+
+# Ensure Bluetooth service is running
+sudo systemctl enable --now bluetooth
 ```
 
-**2. Enable Bluetooth service:**
+**Usage:**
+1. Power on your BLE MIDI device (e.g., MD-BT01 - red LED should blink)
+2. Start ear-trainer - it scans automatically
+3. Press `m` to cycle to "BLE MIDI" mode
+4. Press `b` to force rescan if needed
+
+**Troubleshooting BLE MIDI:**
+
+If auto-connect fails, the app will guide you through prerequisites. You can also check manually:
+
 ```bash
-sudo systemctl enable bluetooth
-sudo systemctl start bluetooth
+# Check Bluetooth is powered on
+bluetoothctl show | grep Powered
+
+# List available adapters (app prefers USB BLE dongles)
+bluetoothctl list
+
+# Manual scan for BLE devices
+bluetoothctl scan le
+
+# Check if device is already paired
+bluetoothctl devices
 ```
 
-**3. Pair your Bluetooth MIDI device:**
-```bash
-bluetoothctl
-# Inside bluetoothctl:
-power on
-agent on
-scan on
-# Wait for your device to appear, note the MAC address
-pair XX:XX:XX:XX:XX:XX
-connect XX:XX:XX:XX:XX:XX
-trust XX:XX:XX:XX:XX:XX
-exit
-```
+**Multiple Bluetooth Adapters:**
+If you have multiple Bluetooth adapters (common on laptops with both internal and USB dongles), the app automatically prefers USB BLE dongles over internal adapters, as internal adapters often have limited BLE support.
 
-**4. For BLE MIDI (most modern MIDI controllers), use one of these methods:**
+#### Legacy Bluetooth MIDI (via system)
+
+For devices that don't work with direct BLE MIDI, you can use system-level Bluetooth MIDI:
 
 **Option A: PipeWire (recommended for modern systems):**
-PipeWire with WirePlumber handles BLE MIDI automatically. Check if it's already working:
 ```bash
 pw-link -o | grep -i midi
 ```
 
-**Option B: bluez-alsa (for ALSA-based setups):**
+**Option B: bluez-alsa:**
 ```bash
 # Arch/Manjaro
 yay -S bluez-alsa-git
-
-# Start the service
-sudo systemctl enable bluealsa
-sudo systemctl start bluealsa
+sudo systemctl enable --now bluealsa
 ```
 
-**Option C: ble2midi (standalone BLE MIDI bridge):**
+**Option C: Manual pairing:**
 ```bash
-# Install from AUR or build from source
-yay -S ble2midi-git
-# Or use: https://github.com/oxesoft/ble2midi
+bluetoothctl
+> scan on
+> pair XX:XX:XX:XX:XX:XX
+> connect XX:XX:XX:XX:XX:XX
+> trust XX:XX:XX:XX:XX:XX
 ```
-
-**5. Verify MIDI ports:**
-```bash
-aconnect -l
-# Your BT MIDI device should appear as a client
-```
-
-### Synthesis (Built-in)
-Uses Rodio for audio playback with simple sine wave synthesis. Works out of the box without any external MIDI setup.
-
-**Note:** The synthesis backend outputs to your system's default audio device via PulseAudio/PipeWire/ALSA.
 
 ## Technical Details
 
@@ -272,7 +292,9 @@ ear-trainer/
 │   ├── audio/
 │   │   ├── backend.rs       - AudioBackend trait
 │   │   ├── midi.rs          - MIDI output implementation
-│   │   └── synth.rs         - Synthesis implementation
+│   │   ├── synth.rs         - Piano-like synthesis
+│   │   ├── ble_midi.rs      - BLE MIDI backend (btleplug)
+│   │   └── manager.rs       - Audio backend coordinator
 │   ├── music/
 │   │   ├── chord.rs         - Chord representation
 │   │   ├── scale.rs         - Scale/mode definitions

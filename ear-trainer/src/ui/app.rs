@@ -1,6 +1,6 @@
-use crate::audio::{AudioBackend, MidiBackend, SynthBackend};
+use crate::audio::{ActiveBackend, AudioManager, BleStatus};
 use crate::music::{Chord, ChordScaleMatcher, Progression, ProgressionLibrary, Scale};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMode {
@@ -9,17 +9,9 @@ pub enum AppMode {
     Quiz,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AudioMode {
-    Midi,
-    Synth,
-}
-
 pub struct App {
     pub mode: AppMode,
-    pub audio_mode: AudioMode,
-    pub midi_backend: MidiBackend,
-    pub synth_backend: SynthBackend,
+    pub audio_manager: AudioManager,
     pub library: ProgressionLibrary,
     pub current_genre: String,
     pub current_progression_idx: usize,
@@ -41,11 +33,13 @@ impl App {
         let genres = library.all_genres();
         let current_genre = genres.first().cloned().unwrap_or_else(|| "Jazz".to_string());
 
+        let mut audio_manager = AudioManager::default();
+        // Start BLE scanning in background
+        audio_manager.start_ble_scan();
+
         Self {
             mode: AppMode::Listen,
-            audio_mode: AudioMode::Synth,
-            midi_backend: MidiBackend::default(),
-            synth_backend: SynthBackend::default(),
+            audio_manager,
             library,
             current_genre,
             current_progression_idx: 0,
@@ -134,15 +128,7 @@ impl App {
         self.is_playing = false;
         self.last_chord_change = None;
         self.current_beat = 0.0;
-
-        match self.audio_mode {
-            AudioMode::Midi => {
-                let _ = self.midi_backend.stop_all();
-            }
-            AudioMode::Synth => {
-                let _ = self.synth_backend.stop_all();
-            }
-        }
+        self.audio_manager.stop_all();
     }
 
     pub fn toggle_play(&mut self) {
@@ -155,13 +141,29 @@ impl App {
 
     pub fn toggle_audio_mode(&mut self) {
         self.stop();
-        self.audio_mode = match self.audio_mode {
-            AudioMode::Midi => AudioMode::Synth,
-            AudioMode::Synth => AudioMode::Midi,
-        };
+        self.audio_manager.toggle_backend();
+    }
+
+    pub fn force_ble_rescan(&mut self) {
+        self.audio_manager.force_ble_rescan();
+    }
+
+    pub fn active_backend(&self) -> ActiveBackend {
+        self.audio_manager.active_backend()
+    }
+
+    pub fn ble_status(&self) -> &BleStatus {
+        self.audio_manager.ble_status()
+    }
+
+    pub fn audio_status_line(&self) -> String {
+        self.audio_manager.get_status_line()
     }
 
     pub fn update(&mut self) {
+        // Poll BLE events
+        self.audio_manager.poll_ble_events();
+
         if !self.is_playing {
             return;
         }
@@ -189,14 +191,7 @@ impl App {
     }
 
     fn next_chord(&mut self) {
-        match self.audio_mode {
-            AudioMode::Midi => {
-                let _ = self.midi_backend.stop_all();
-            }
-            AudioMode::Synth => {
-                let _ = self.synth_backend.stop_all();
-            }
-        }
+        self.audio_manager.stop_all();
 
         let num_changes = self.current_progression().map(|p| p.changes.len()).unwrap_or(1);
         self.current_chord_idx = (self.current_chord_idx + 1) % num_changes;
@@ -209,15 +204,7 @@ impl App {
 
     fn play_current_chord(&mut self, chord: &Chord) {
         let notes = chord.notes_in_range(48, 72);
-
-        match self.audio_mode {
-            AudioMode::Midi => {
-                let _ = self.midi_backend.play_chord(&notes, 80);
-            }
-            AudioMode::Synth => {
-                let _ = self.synth_backend.play_chord(&notes, 80);
-            }
-        }
+        let _ = self.audio_manager.play_chord(&notes, 80);
     }
 
     pub fn increase_tempo(&mut self) {

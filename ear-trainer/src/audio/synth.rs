@@ -1,9 +1,10 @@
 use super::backend::AudioBackend;
 use anyhow::Result;
 use rodio::{OutputStream, OutputStreamHandle, Sink, Source};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+const SAMPLE_RATE: u32 = 48000;
 
 pub struct SynthBackend {
     _stream: OutputStream,
@@ -32,16 +33,14 @@ impl SynthBackend {
 impl AudioBackend for SynthBackend {
     fn play_note(&mut self, note: u8, velocity: u8) -> Result<()> {
         let frequency = Self::midi_to_frequency(note);
-        let amplitude = (velocity as f32 / 127.0) * 0.3;
+        // Reduce amplitude to prevent clipping when multiple notes play
+        let amplitude = (velocity as f32 / 127.0) * 0.15;
 
         // Create a new sink for each note so we can stop them independently
         let sink = Sink::try_new(&self.stream_handle)?;
 
-        // Use an ADSR-like envelope for more musical sound
-        let source = SineWave::new(frequency)
-            .amplify(amplitude)
-            .fade_in(Duration::from_millis(5))
-            .take_duration(Duration::from_millis(2000));
+        // Use piano-like tone with harmonics and proper envelope
+        let source = PianoTone::new(frequency, amplitude, 3000);
 
         sink.append(source);
 
@@ -58,6 +57,12 @@ impl AudioBackend for SynthBackend {
     }
 
     fn play_chord(&mut self, notes: &[u8], velocity: u8) -> Result<()> {
+        // Clean up finished sinks before adding new ones to prevent accumulation
+        {
+            let mut sinks = self.sinks.lock().unwrap();
+            sinks.retain(|sink| !sink.empty());
+        }
+
         for &note in notes {
             self.play_note(note, velocity)?;
         }
@@ -85,39 +90,108 @@ impl Default for SynthBackend {
     }
 }
 
-struct SineWave {
+/// Piano-like tone with harmonics and ADSR envelope
+/// This creates a richer, more musical sound than a pure sine wave
+struct PianoTone {
     frequency: f32,
+    amplitude: f32,
     sample_rate: u32,
     current_sample: u64,
+    total_samples: u64,
+    // ADSR envelope parameters (in samples)
+    attack_samples: u64,
+    decay_samples: u64,
+    sustain_level: f32,
+    release_samples: u64,
+    // Phase accumulators for each harmonic (prevents clicks)
+    phases: [f64; 4],
 }
 
-impl SineWave {
-    fn new(frequency: f32) -> Self {
+impl PianoTone {
+    fn new(frequency: f32, amplitude: f32, duration_ms: u64) -> Self {
+        let total_samples = (SAMPLE_RATE as u64 * duration_ms) / 1000;
+
         Self {
             frequency,
-            sample_rate: 48000,
+            amplitude,
+            sample_rate: SAMPLE_RATE,
             current_sample: 0,
+            total_samples,
+            // Quick attack, medium decay, sustain at 60%, longer release
+            attack_samples: (SAMPLE_RATE as f32 * 0.01) as u64,   // 10ms attack
+            decay_samples: (SAMPLE_RATE as f32 * 0.15) as u64,    // 150ms decay
+            sustain_level: 0.6,
+            release_samples: (SAMPLE_RATE as f32 * 0.3) as u64,   // 300ms release
+            phases: [0.0; 4],
+        }
+    }
+
+    /// Calculate ADSR envelope value at current sample
+    fn envelope(&self) -> f32 {
+        let sample = self.current_sample;
+        let release_start = self.total_samples.saturating_sub(self.release_samples);
+
+        if sample < self.attack_samples {
+            // Attack phase: linear ramp up
+            sample as f32 / self.attack_samples as f32
+        } else if sample < self.attack_samples + self.decay_samples {
+            // Decay phase: exponential decay to sustain level
+            let decay_pos = (sample - self.attack_samples) as f32 / self.decay_samples as f32;
+            1.0 - (1.0 - self.sustain_level) * decay_pos
+        } else if sample < release_start {
+            // Sustain phase
+            self.sustain_level
+        } else {
+            // Release phase: exponential decay to zero
+            let release_pos = (sample - release_start) as f32 / self.release_samples as f32;
+            self.sustain_level * (1.0 - release_pos).max(0.0)
         }
     }
 }
 
-impl Iterator for SineWave {
+impl Iterator for PianoTone {
     type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let value = (self.current_sample as f32 * self.frequency * 2.0 * std::f32::consts::PI
-            / self.sample_rate as f32)
-            .sin();
+        if self.current_sample >= self.total_samples {
+            return None;
+        }
 
-        self.current_sample = self.current_sample.wrapping_add(1);
+        // Phase increment for fundamental frequency
+        let phase_inc = (self.frequency as f64 * 2.0 * std::f64::consts::PI) / self.sample_rate as f64;
+
+        // Generate tone with harmonics for richer sound
+        // Piano-like harmonic series with decreasing amplitudes
+        let harmonic_weights = [1.0f64, 0.5, 0.25, 0.125];
+
+        let mut sample = 0.0f64;
+        for (i, &weight) in harmonic_weights.iter().enumerate() {
+            let harmonic = (i + 1) as f64;
+            // Accumulate phase to prevent discontinuities
+            self.phases[i] += phase_inc * harmonic;
+            // Keep phase in reasonable range to prevent precision loss
+            if self.phases[i] > 2.0 * std::f64::consts::PI {
+                self.phases[i] -= 2.0 * std::f64::consts::PI;
+            }
+            sample += self.phases[i].sin() * weight;
+        }
+
+        // Normalize by sum of weights
+        sample /= harmonic_weights.iter().sum::<f64>();
+
+        // Apply envelope and amplitude
+        let envelope = self.envelope();
+        let value = (sample as f32 * self.amplitude * envelope).clamp(-1.0, 1.0);
+
+        self.current_sample += 1;
 
         Some(value)
     }
 }
 
-impl Source for SineWave {
+impl Source for PianoTone {
     fn current_frame_len(&self) -> Option<usize> {
-        None
+        Some((self.total_samples - self.current_sample) as usize)
     }
 
     fn channels(&self) -> u16 {
@@ -129,6 +203,8 @@ impl Source for SineWave {
     }
 
     fn total_duration(&self) -> Option<Duration> {
-        None
+        Some(Duration::from_millis(
+            (self.total_samples * 1000) / self.sample_rate as u64,
+        ))
     }
 }
