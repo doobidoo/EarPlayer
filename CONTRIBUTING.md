@@ -31,20 +31,30 @@ This project follows [Semantic Versioning](https://semver.org/):
 
 ## Making a Release
 
-### Option 1: GitHub Actions (Recommended)
+### Option 1: Trigger GitHub Workflow (Recommended)
 
+From command line (requires `gh` CLI):
+```bash
+./scripts/trigger-release.sh patch              # 0.2.0 → 0.2.1
+./scripts/trigger-release.sh minor "New features"  # 0.2.0 → 0.3.0
+./scripts/trigger-release.sh major "Breaking changes"  # 0.2.0 → 1.0.0
+```
+
+Or via GitHub web UI:
 1. Go to **Actions** → **Release** workflow
 2. Click **Run workflow**
 3. Select version bump type (patch/minor/major)
 4. Optionally add release notes
-5. The workflow will:
-   - Calculate new version
-   - Update VERSION, Cargo.toml, CHANGELOG.md
-   - Create git tag
-   - Push changes
-   - Create GitHub release with binary
 
-### Option 2: Local Script
+The workflow automatically:
+- Calculates new version
+- Parses commits to generate changelog (feat→Added, fix→Fixed, etc.)
+- Updates VERSION, Cargo.toml, CHANGELOG.md
+- Builds release binary
+- Creates git tag and pushes
+- Creates GitHub release with binary attached
+
+### Option 2: Local Script (Manual)
 
 ```bash
 ./scripts/release.sh patch   # 0.2.0 → 0.2.1
@@ -56,6 +66,9 @@ Then push:
 ```bash
 git push origin main --tags
 ```
+
+Then manually create GitHub release at:
+https://github.com/doobidoo/EarPlayer/releases/new
 
 ## Commit Message Format
 
