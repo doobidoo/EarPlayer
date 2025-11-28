@@ -1,7 +1,12 @@
 [package]
 name = "ear-trainer"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+description = "Terminal-based music ear training application"
+repository = "https://github.com/doobidoo/EarPlayer"
+license = "MIT"
+keywords = ["music", "ear-training", "midi", "terminal", "tui"]
+categories = ["multimedia::audio", "command-line-utilities"]
 
 [dependencies]
 ratatui = "0.26"

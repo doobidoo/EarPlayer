@@ -1,0 +1,224 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      release_notes:
+        description: 'Additional release notes (optional)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Calculate New Version
+        id: version
+        run: |
+          CURRENT_VERSION=$(cat VERSION | tr -d '\n')
+          echo "Current version: $CURRENT_VERSION"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+          case "${{ github.event.inputs.version_bump }}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get Commits Since Last Tag
+        id: commits
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --oneline --no-decorate)
+          else
+            COMMITS=$(git log --oneline --no-decorate ${LAST_TAG}..HEAD)
+          fi
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Generate Release Content with Claude
+        id: claude
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are a release manager for the EarPlayer project, a terminal-based music ear training application in Rust.
+
+            Current version: ${{ steps.version.outputs.current_version }}
+            New version: ${{ steps.version.outputs.new_version }}
+            Version bump type: ${{ github.event.inputs.version_bump }}
+
+            Recent commits:
+            ${{ steps.commits.outputs.commits }}
+
+            Additional notes from maintainer:
+            ${{ github.event.inputs.release_notes }}
+
+            Please generate:
+
+            1. A CHANGELOG entry in Keep a Changelog format for version ${{ steps.version.outputs.new_version }}
+               - Group changes into: Added, Changed, Deprecated, Removed, Fixed, Security
+               - Be concise but descriptive
+               - Include the date in YYYY-MM-DD format
+
+            2. GitHub release notes in markdown format
+               - Start with a brief summary (1-2 sentences)
+               - List key highlights
+               - Include any breaking changes prominently
+               - Add installation/upgrade instructions if relevant
+
+            3. Any README updates needed (return "NO_UPDATE" if none needed)
+
+            Format your response as JSON:
+            {
+              "changelog_entry": "## [x.y.z] - YYYY-MM-DD\n\n### Added\n- ...",
+              "release_notes": "# Release v${{ steps.version.outputs.new_version }}\n\n...",
+              "readme_updates": "NO_UPDATE or the specific changes needed"
+            }
+          allowed_tools: ""
+          max_turns: 1
+
+      - name: Update VERSION file
+        run: |
+          echo "${{ steps.version.outputs.new_version }}" > VERSION
+
+      - name: Update Cargo.toml version
+        run: |
+          if [ -f "ear-trainer/Cargo.toml" ]; then
+            sed -i "s/^version = \".*\"/version = \"${{ steps.version.outputs.new_version }}\"/" ear-trainer/Cargo.toml
+          fi
+
+      - name: Parse Claude Response and Update CHANGELOG
+        run: |
+          # Extract changelog entry from Claude's response
+          # This is a simplified version - in production you'd parse the JSON properly
+          RESPONSE='${{ steps.claude.outputs.response }}'
+
+          # For now, create a basic changelog entry if Claude's response isn't parseable
+          DATE=$(date +%Y-%m-%d)
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+
+          # Read existing changelog
+          EXISTING=$(cat CHANGELOG.md)
+
+          # Check if we can extract from Claude's response, otherwise use commits
+          if echo "$RESPONSE" | jq -e '.changelog_entry' > /dev/null 2>&1; then
+            CHANGELOG_ENTRY=$(echo "$RESPONSE" | jq -r '.changelog_entry')
+          else
+            # Fallback: generate from commits
+            CHANGELOG_ENTRY="## [$NEW_VERSION] - $DATE
+
+### Changed
+- See commit history for details
+"
+          fi
+
+          # Insert new entry after [Unreleased] section
+          awk -v entry="$CHANGELOG_ENTRY" '
+            /^## \[Unreleased\]/ {
+              print
+              print ""
+              print entry
+              next
+            }
+            {print}
+          ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+
+          # Update comparison links at bottom
+          sed -i "s|\[Unreleased\]:.*|[Unreleased]: https://github.com/doobidoo/EarPlayer/compare/v$NEW_VERSION...HEAD|" CHANGELOG.md
+
+      - name: Commit Changes
+        run: |
+          git add VERSION CHANGELOG.md
+          if [ -f "ear-trainer/Cargo.toml" ]; then
+            git add ear-trainer/Cargo.toml
+          fi
+          git commit -m "chore(release): v${{ steps.version.outputs.new_version }}"
+
+      - name: Create Tag
+        run: |
+          git tag -a "v${{ steps.version.outputs.new_version }}" -m "Release v${{ steps.version.outputs.new_version }}"
+
+      - name: Push Changes and Tag
+        run: |
+          git push origin main
+          git push origin "v${{ steps.version.outputs.new_version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.new_version }}
+          name: v${{ steps.version.outputs.new_version }}
+          body: |
+            ## What's Changed in v${{ steps.version.outputs.new_version }}
+
+            ${{ github.event.inputs.release_notes }}
+
+            ### Commits
+            ${{ steps.commits.outputs.commits }}
+
+            ---
+
+            **Full Changelog**: https://github.com/doobidoo/EarPlayer/compare/v${{ steps.version.outputs.current_version }}...v${{ steps.version.outputs.new_version }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Release Binary
+        run: |
+          cd ear-trainer
+          cargo build --release
+        continue-on-error: true
+
+      - name: Upload Release Asset
+        if: success()
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.new_version }}
+          files: |
+            ear-trainer/target/release/ear-trainer
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
