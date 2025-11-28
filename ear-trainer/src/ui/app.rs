@@ -1,5 +1,6 @@
 use crate::audio::{ActiveBackend, AudioManager, BleStatus};
-use crate::music::{Chord, ChordScaleMatcher, Progression, ProgressionLibrary, Scale};
+use crate::music::{Chord, ChordScaleMatcher, Progression, ProgressionLibrary, Scale, VoicingType};
+use super::lego_mode::LegoModeState;
 use super::timeline::TimelineState;
 use std::time::Instant;
 
@@ -8,6 +9,10 @@ pub enum AppMode {
     Listen,
     Practice,
     Quiz,
+    /// LEGO Bricks: Listen to bricks with annotations
+    LegoListen,
+    /// LEGO Bricks: Quiz - identify which brick is playing
+    LegoQuiz,
 }
 
 pub struct App {
@@ -28,6 +33,14 @@ pub struct App {
     pub selected_genre_idx: usize,
     /// Timeline state for piano roll visualization
     pub timeline_state: TimelineState,
+    /// LEGO Bricks training mode state
+    pub lego_state: LegoModeState,
+    /// Current voicing type for chord playback
+    pub current_voicing: VoicingType,
+    /// Swing enabled for jazz feel
+    pub swing_enabled: bool,
+    /// Swing ratio: 0.5 = straight, 0.58 = light swing, 0.67 = hard swing
+    pub swing_ratio: f32,
 }
 
 impl App {
@@ -57,6 +70,10 @@ impl App {
             current_beat: 0.0,
             selected_genre_idx: 0,
             timeline_state: TimelineState::new(),
+            lego_state: LegoModeState::new(),
+            current_voicing: VoicingType::Full,
+            swing_enabled: false,
+            swing_ratio: 0.5, // Straight timing by default
         };
         app.refresh_timeline();
         app
@@ -195,7 +212,24 @@ impl App {
             let should_change = if let Some(prog) = self.current_progression() {
                 let current_change = &prog.changes[self.current_chord_idx];
                 let beat_duration_ms = (60000.0 / prog.tempo) as u64;
-                let chord_duration_ms = (current_change.duration * beat_duration_ms as f32) as u64;
+
+                // Apply swing timing if enabled
+                // Swing affects pairs of eighth notes: first is longer, second is shorter
+                // For chord changes, we apply swing to odd/even chord indices
+                let swing_factor = if self.swing_enabled {
+                    if self.current_chord_idx % 2 == 0 {
+                        // Even index (1st, 3rd, etc.) - longer duration
+                        self.swing_ratio * 2.0
+                    } else {
+                        // Odd index (2nd, 4th, etc.) - shorter duration
+                        (1.0 - self.swing_ratio) * 2.0
+                    }
+                } else {
+                    1.0
+                };
+
+                let chord_duration_ms =
+                    (current_change.duration * beat_duration_ms as f32 * swing_factor) as u64;
 
                 self.current_beat =
                     (elapsed.as_millis() as f32 / beat_duration_ms as f32) % current_change.duration;
@@ -227,7 +261,19 @@ impl App {
     }
 
     fn play_current_chord(&mut self, chord: &Chord) {
-        let notes = chord.notes_in_range(48, 72);
+        // Use voicing system to get properly voiced notes
+        let voiced = self.current_voicing.voice_chord(
+            chord,
+            2,        // Bass octave (C2 = MIDI 36)
+            4,        // Voicing octave (C4 = MIDI 60)
+            (36, 84), // Range: C2 to C6
+        );
+
+        // Combine bass and voicing notes
+        let mut notes = voiced.all_notes();
+        notes.sort();
+        notes.dedup();
+
         let _ = self.audio_manager.play_chord(&notes, 80);
     }
 
@@ -241,6 +287,57 @@ impl App {
         if let Some(prog) = self.current_progression() {
             self.tempo = (prog.tempo - 5.0).max(40.0);
         }
+    }
+
+    /// Cycle to the next voicing type
+    pub fn cycle_voicing(&mut self) {
+        self.current_voicing = self.current_voicing.next();
+    }
+
+    /// Toggle swing feel
+    pub fn toggle_swing(&mut self) {
+        self.swing_enabled = !self.swing_enabled;
+    }
+
+    /// Cycle swing ratio: 0.5 (straight) -> 0.58 (light) -> 0.67 (hard) -> 0.5
+    pub fn cycle_swing_ratio(&mut self) {
+        self.swing_ratio = match self.swing_ratio {
+            r if r < 0.55 => 0.58,
+            r if r < 0.63 => 0.67,
+            _ => 0.5,
+        };
+    }
+
+    /// Enter LEGO Listen mode
+    pub fn enter_lego_listen(&mut self) {
+        self.stop();
+        self.mode = AppMode::LegoListen;
+        // Set first brick if not set
+        if self.lego_state.current_brick_name.is_none() {
+            let bricks = self.lego_state.brick_library.for_difficulty(self.lego_state.difficulty);
+            if let Some(brick) = bricks.first() {
+                self.lego_state.current_brick_name = Some(brick.name.clone());
+            }
+        }
+    }
+
+    /// Enter LEGO Quiz mode
+    pub fn enter_lego_quiz(&mut self) {
+        self.stop();
+        self.mode = AppMode::LegoQuiz;
+        self.lego_state.generate_quiz();
+    }
+
+    /// Submit quiz answer (1-4)
+    pub fn submit_quiz_answer(&mut self, answer: usize) {
+        if self.mode == AppMode::LegoQuiz {
+            self.lego_state.submit_answer(answer);
+        }
+    }
+
+    /// Check if in a LEGO mode
+    pub fn is_lego_mode(&self) -> bool {
+        matches!(self.mode, AppMode::LegoListen | AppMode::LegoQuiz)
     }
 }
 

@@ -1,3 +1,4 @@
+use super::bricks::BrickLibrary;
 use super::chord::{Chord, ChordQuality, Note};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -51,6 +52,7 @@ impl ProgressionLibrary {
         library.populate_funk();
         library.populate_smooth_jazz();
         library.populate_pop();
+        library.populate_lego_bricks();
         library
     }
 
@@ -729,6 +731,32 @@ impl ProgressionLibrary {
         pop.push(prog);
 
         self.progressions.insert("Pop".to_string(), pop);
+    }
+
+    fn populate_lego_bricks(&mut self) {
+        let brick_library = BrickLibrary::new();
+        let mut lego = Vec::new();
+
+        // Common jazz keys to generate bricks in
+        let common_keys = [
+            Note::C,
+            Note::F,
+            Note::Bb,
+            Note::Eb,
+            Note::Ab,
+            Note::G,
+            Note::D,
+        ];
+
+        // Generate progressions from each brick in common keys
+        for brick in brick_library.all() {
+            // Generate in 2-3 common keys to avoid overwhelming the library
+            for &key in common_keys.iter().take(3) {
+                lego.push(brick.to_progression(key, 140.0));
+            }
+        }
+
+        self.progressions.insert("LEGO Bricks".to_string(), lego);
     }
 
     pub fn get_by_genre(&self, genre: &str) -> Option<&Vec<Progression>> {

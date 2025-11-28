@@ -1,6 +1,7 @@
 mod audio;
 mod config;
 mod music;
+mod storage;
 mod ui;
 
 use anyhow::Result;
@@ -81,6 +82,19 @@ fn ui(f: &mut Frame, app: &App) {
     if app.show_help {
         render_help(f, app);
         return;
+    }
+
+    // Handle LEGO modes with specialized UI
+    match app.mode {
+        AppMode::LegoListen => {
+            render_lego_listen(f, app);
+            return;
+        }
+        AppMode::LegoQuiz => {
+            render_lego_quiz(f, app);
+            return;
+        }
+        _ => {}
     }
 
     // Adaptive layout based on terminal height
@@ -286,6 +300,8 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
         AppMode::Listen => "Listen Mode",
         AppMode::Practice => "Practice Mode",
         AppMode::Quiz => "Quiz Mode",
+        AppMode::LegoListen => "LEGO Listen",
+        AppMode::LegoQuiz => "LEGO Quiz",
     };
 
     // Build status line - show BLE issues if any, otherwise normal status
@@ -328,17 +344,41 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     ]);
 
     if let Some(prog) = app.current_progression() {
+        // Build voicing/swing info
+        let voicing_text = format!("{:?}", app.current_voicing);
+        let swing_text = if app.swing_enabled {
+            let ratio_name = match app.swing_ratio {
+                r if r < 0.55 => "Straight",
+                r if r < 0.63 => "Light",
+                _ => "Hard",
+            };
+            format!("Swing: {}", ratio_name)
+        } else {
+            "Swing: Off".to_string()
+        };
+
         let tempo_line = Line::from(vec![
             Span::styled("Tempo: ", Style::default().fg(Color::Gray)),
             Span::styled(
                 format!("{:.0} BPM", prog.tempo),
                 Style::default().fg(Color::Yellow),
             ),
-            Span::raw("  (+/- to adjust)  |  "),
+            Span::raw("  |  "),
             Span::styled("Key: ", Style::default().fg(Color::Gray)),
             Span::styled(
                 prog.key.name(),
                 Style::default().fg(Color::Magenta),
+            ),
+            Span::raw("  |  "),
+            Span::styled("Voice: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                voicing_text,
+                Style::default().fg(Color::Cyan),
+            ),
+            Span::raw("  |  "),
+            Span::styled(
+                swing_text,
+                Style::default().fg(if app.swing_enabled { Color::Green } else { Color::DarkGray }),
             ),
         ]);
 
@@ -377,12 +417,26 @@ fn render_help(f: &mut Frame, app: &App) {
         Line::from("  1          - Listen mode"),
         Line::from("  2          - Practice mode"),
         Line::from("  3          - Quiz mode"),
+        Line::from("  4          - LEGO Bricks Listen mode"),
+        Line::from("  5          - LEGO Bricks Quiz mode"),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("LEGO Mode Controls:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from("  n/p        - Next/Previous brick (Listen)"),
+        Line::from("  k/K        - Next/Previous key (Listen)"),
+        Line::from("  d          - Cycle difficulty"),
+        Line::from("  1-4        - Answer quiz question (Quiz)"),
+        Line::from("  ESC        - Exit LEGO mode"),
         Line::from(""),
         Line::from(vec![
             Span::styled("Display Options:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         ]),
         Line::from("  s          - Toggle scale display"),
         Line::from("  v          - Toggle voice leading arrows"),
+        Line::from("  V          - Cycle voicing type"),
+        Line::from("  w          - Toggle swing feel"),
+        Line::from("  W          - Cycle swing ratio"),
         Line::from("  [/]        - Scroll timeline left/right"),
         Line::from("  m          - Cycle audio: MIDI -> Synth -> BLE MIDI"),
         Line::from("  b          - Force BLE MIDI rescan"),
@@ -433,4 +487,319 @@ fn render_help(f: &mut Frame, app: &App) {
         .wrap(Wrap { trim: true });
 
     f.render_widget(paragraph, area);
+}
+
+// ==== LEGO Mode Rendering ====
+
+fn render_lego_listen(f: &mut Frame, app: &App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(3),   // Header
+            Constraint::Min(10),     // Main content
+            Constraint::Length(5),   // Controls hint
+        ])
+        .split(f.size());
+
+    // Header
+    let header_text = vec![
+        Span::styled(
+            "🧱 LEGO BRICKS - Listen Mode",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  |  "),
+        Span::styled(
+            format!("Difficulty: {:?}", app.lego_state.difficulty),
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::raw("  |  "),
+        Span::styled(
+            format!("Key: {}", app.lego_state.current_key.name()),
+            Style::default().fg(Color::Green),
+        ),
+    ];
+    let header = Paragraph::new(Line::from(header_text))
+        .block(Block::default().borders(Borders::ALL))
+        .style(Style::default());
+    f.render_widget(header, chunks[0]);
+
+    // Main content - brick info
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(chunks[1]);
+
+    // Left: Brick name and description
+    let brick_info = if let Some(brick) = app.lego_state.get_current_brick() {
+        vec![
+            Line::from(vec![
+                Span::styled("Current Brick: ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    &brick.name,
+                    Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Description: ", Style::default().fg(Color::Gray)),
+            ]),
+            Line::from(vec![
+                Span::styled(&brick.description, Style::default().fg(Color::White)),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Category: ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    format!("{:?}", brick.category),
+                    Style::default().fg(Color::Yellow),
+                ),
+            ]),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("Duration: ", Style::default().fg(Color::Gray)),
+                Span::styled(
+                    format!("{} beats", brick.duration_beats),
+                    Style::default().fg(Color::Cyan),
+                ),
+            ]),
+        ]
+    } else {
+        vec![Line::from("No brick selected")]
+    };
+
+    let info_block = Paragraph::new(brick_info)
+        .block(
+            Block::default()
+                .title("Brick Info")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
+        .wrap(Wrap { trim: true });
+    f.render_widget(info_block, main_chunks[0]);
+
+    // Right: Chord progression
+    let progression_info = if let Some(brick) = app.lego_state.get_current_brick() {
+        let mut lines = vec![
+            Line::from(vec![
+                Span::styled("Chord Changes:", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(""),
+        ];
+        for chord_def in &brick.template {
+            let chord_name = chord_def.to_chord(app.lego_state.current_key).name();
+            lines.push(Line::from(vec![
+                Span::styled(
+                    format!("  {:?} → ", chord_def.degree),
+                    Style::default().fg(Color::Gray),
+                ),
+                Span::styled(
+                    chord_name,
+                    Style::default().fg(Color::Green),
+                ),
+                Span::raw(format!(" ({} beats)", chord_def.duration)),
+            ]));
+        }
+        lines
+    } else {
+        vec![Line::from("")]
+    };
+
+    let prog_block = Paragraph::new(progression_info)
+        .block(
+            Block::default()
+                .title("Progression")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Green)),
+        );
+    f.render_widget(prog_block, main_chunks[1]);
+
+    // Controls hint
+    let playback_status = if app.is_playing {
+        Span::styled("▶ PLAYING", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+    } else {
+        Span::styled("■ STOPPED", Style::default().fg(Color::Red))
+    };
+
+    let controls = vec![
+        Line::from(vec![playback_status]),
+        Line::from(""),
+        Line::from(vec![
+            Span::styled("SPACE", Style::default().fg(Color::Yellow)),
+            Span::raw(" Play  "),
+            Span::styled("n/p", Style::default().fg(Color::Yellow)),
+            Span::raw(" Next/Prev Brick  "),
+            Span::styled("k/K", Style::default().fg(Color::Yellow)),
+            Span::raw(" Next/Prev Key  "),
+            Span::styled("d", Style::default().fg(Color::Yellow)),
+            Span::raw(" Difficulty  "),
+            Span::styled("ESC", Style::default().fg(Color::Yellow)),
+            Span::raw(" Back  "),
+            Span::styled("h", Style::default().fg(Color::Yellow)),
+            Span::raw(" Help"),
+        ]),
+    ];
+    let controls_block = Paragraph::new(controls)
+        .block(Block::default().borders(Borders::ALL))
+        .style(Style::default());
+    f.render_widget(controls_block, chunks[2]);
+}
+
+fn render_lego_quiz(f: &mut Frame, app: &App) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .margin(1)
+        .constraints([
+            Constraint::Length(3),   // Header
+            Constraint::Length(5),   // Score
+            Constraint::Min(8),      // Quiz content
+            Constraint::Length(3),   // Controls
+        ])
+        .split(f.size());
+
+    // Header
+    let header_text = vec![
+        Span::styled(
+            "🧱 LEGO BRICKS - Quiz Mode",
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        ),
+        Span::raw("  |  "),
+        Span::styled(
+            format!("Difficulty: {:?}", app.lego_state.difficulty),
+            Style::default().fg(Color::Yellow),
+        ),
+    ];
+    let header = Paragraph::new(Line::from(header_text))
+        .block(Block::default().borders(Borders::ALL))
+        .style(Style::default());
+    f.render_widget(header, chunks[0]);
+
+    // Score panel
+    let score = &app.lego_state.session_score;
+    let score_lines = vec![
+        Line::from(vec![
+            Span::styled("Score: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{}/{}", score.correct, score.total),
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("  |  "),
+            Span::styled("Accuracy: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{:.0}%", score.accuracy()),
+                Style::default().fg(Color::Cyan),
+            ),
+            Span::raw("  |  "),
+            Span::styled("Streak: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                format!("{} (best: {})", score.streak, score.best_streak),
+                Style::default().fg(Color::Yellow),
+            ),
+        ]),
+    ];
+    let score_block = Paragraph::new(score_lines)
+        .block(
+            Block::default()
+                .title("Session Score")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Yellow)),
+        );
+    f.render_widget(score_block, chunks[1]);
+
+    // Quiz content
+    if let Some(quiz) = &app.lego_state.current_quiz {
+        let playback_hint = if app.is_playing {
+            Span::styled("▶ PLAYING - Listen carefully!", Style::default().fg(Color::Green))
+        } else {
+            Span::styled("Press SPACE to hear the brick", Style::default().fg(Color::Gray))
+        };
+
+        let mut quiz_lines = vec![
+            Line::from(vec![
+                Span::styled(
+                    "Which brick is playing?",
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                ),
+            ]),
+            Line::from(""),
+            Line::from(vec![playback_hint]),
+            Line::from(""),
+        ];
+
+        // Answer options
+        for (i, option) in quiz.options.iter().enumerate() {
+            let is_selected = quiz.user_answer == Some(i);
+            let is_correct_answer = i == quiz.correct_idx;
+
+            let (prefix, style) = if quiz.revealed {
+                if is_correct_answer {
+                    ("✓ ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+                } else if is_selected {
+                    ("✗ ", Style::default().fg(Color::Red))
+                } else {
+                    ("  ", Style::default().fg(Color::DarkGray))
+                }
+            } else {
+                ("  ", Style::default().fg(Color::White))
+            };
+
+            quiz_lines.push(Line::from(vec![
+                Span::styled(format!("{}[{}] ", prefix, i + 1), style),
+                Span::styled(option, style),
+            ]));
+        }
+
+        if quiz.revealed {
+            quiz_lines.push(Line::from(""));
+            let result_text = if quiz.is_correct() {
+                Span::styled("Correct!", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+            } else {
+                Span::styled(
+                    format!("Wrong! It was: {}", quiz.correct_answer()),
+                    Style::default().fg(Color::Red),
+                )
+            };
+            quiz_lines.push(Line::from(vec![result_text]));
+            quiz_lines.push(Line::from(""));
+            quiz_lines.push(Line::from(vec![
+                Span::styled("Press ENTER or SPACE for next question", Style::default().fg(Color::Gray)),
+            ]));
+        }
+
+        let quiz_block = Paragraph::new(quiz_lines)
+            .block(
+                Block::default()
+                    .title("Quiz")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Magenta)),
+            );
+        f.render_widget(quiz_block, chunks[2]);
+    } else {
+        let no_quiz = Paragraph::new("Press SPACE to start a new quiz!")
+            .block(
+                Block::default()
+                    .title("Quiz")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Magenta)),
+            );
+        f.render_widget(no_quiz, chunks[2]);
+    }
+
+    // Controls
+    let controls = vec![Line::from(vec![
+        Span::styled("1-4", Style::default().fg(Color::Yellow)),
+        Span::raw(" Answer  "),
+        Span::styled("SPACE", Style::default().fg(Color::Yellow)),
+        Span::raw(" Play/Next  "),
+        Span::styled("d", Style::default().fg(Color::Yellow)),
+        Span::raw(" Difficulty  "),
+        Span::styled("ESC", Style::default().fg(Color::Yellow)),
+        Span::raw(" Back  "),
+        Span::styled("h", Style::default().fg(Color::Yellow)),
+        Span::raw(" Help"),
+    ])];
+    let controls_block = Paragraph::new(controls)
+        .block(Block::default().borders(Borders::ALL))
+        .style(Style::default());
+    f.render_widget(controls_block, chunks[3]);
 }
