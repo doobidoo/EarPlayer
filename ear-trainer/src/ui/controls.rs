@@ -104,6 +104,8 @@ pub fn handle_input(app: &mut App, key: KeyEvent) -> bool {
         KeyCode::Char('V') => app.cycle_voicing(),
         KeyCode::Char('w') => app.toggle_swing(),
         KeyCode::Char('W') => app.cycle_swing_ratio(),
+        // Rhythm style control
+        KeyCode::Char('r') => app.cycle_rhythm(),
         _ => {}
     }
     true

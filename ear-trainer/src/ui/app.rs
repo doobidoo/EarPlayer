@@ -1,5 +1,5 @@
 use crate::audio::{ActiveBackend, AudioManager, BleStatus};
-use crate::music::{Chord, ChordScaleMatcher, Progression, ProgressionLibrary, Scale, VoicingType};
+use crate::music::{Chord, ChordScaleMatcher, Progression, ProgressionLibrary, RhythmState, RhythmStyle, Scale, VoicingType};
 use super::lego_mode::LegoModeState;
 use super::timeline::TimelineState;
 use std::time::Instant;
@@ -41,6 +41,8 @@ pub struct App {
     pub swing_enabled: bool,
     /// Swing ratio: 0.5 = straight, 0.58 = light swing, 0.67 = hard swing
     pub swing_ratio: f32,
+    /// Rhythm state for comping patterns
+    pub rhythm_state: RhythmState,
 }
 
 impl App {
@@ -74,6 +76,7 @@ impl App {
             current_voicing: VoicingType::Full,
             swing_enabled: false,
             swing_ratio: 0.5, // Straight timing by default
+            rhythm_state: RhythmState::new(),
         };
         app.refresh_timeline();
         app
@@ -209,19 +212,16 @@ impl App {
         if let Some(last_change) = self.last_chord_change {
             let elapsed = last_change.elapsed();
 
-            let should_change = if let Some(prog) = self.current_progression() {
+            // Extract values from progression without holding borrow
+            let (beat_duration_ms, chord_duration_ms, change_duration) = if let Some(prog) = self.current_progression() {
                 let current_change = &prog.changes[self.current_chord_idx];
                 let beat_duration_ms = (60000.0 / prog.tempo) as u64;
 
                 // Apply swing timing if enabled
-                // Swing affects pairs of eighth notes: first is longer, second is shorter
-                // For chord changes, we apply swing to odd/even chord indices
                 let swing_factor = if self.swing_enabled {
                     if self.current_chord_idx % 2 == 0 {
-                        // Even index (1st, 3rd, etc.) - longer duration
                         self.swing_ratio * 2.0
                     } else {
-                        // Odd index (2nd, 4th, etc.) - shorter duration
                         (1.0 - self.swing_ratio) * 2.0
                     }
                 } else {
@@ -231,13 +231,24 @@ impl App {
                 let chord_duration_ms =
                     (current_change.duration * beat_duration_ms as f32 * swing_factor) as u64;
 
-                self.current_beat =
-                    (elapsed.as_millis() as f32 / beat_duration_ms as f32) % current_change.duration;
-
-                elapsed.as_millis() >= chord_duration_ms as u128
+                (beat_duration_ms, chord_duration_ms, current_change.duration)
             } else {
-                false
+                return;
             };
+
+            // Update current beat position
+            self.current_beat =
+                (elapsed.as_millis() as f32 / beat_duration_ms as f32) % change_duration;
+
+            // Check if rhythm pattern should trigger a hit
+            if let Some((velocity, _duration)) = self.rhythm_state.check_hit(self.current_beat, change_duration) {
+                if let Some(chord) = self.current_chord().cloned() {
+                    self.play_chord_hit(&chord, velocity);
+                }
+            }
+
+            // Check if we should move to next chord
+            let should_change = elapsed.as_millis() >= chord_duration_ms as u128;
 
             // Update timeline state with current playback position
             self.timeline_state.update(self.current_chord_idx, self.current_beat);
@@ -255,12 +266,24 @@ impl App {
         self.current_chord_idx = (self.current_chord_idx + 1) % num_changes;
         self.last_chord_change = Some(Instant::now());
 
-        if let Some(chord) = self.current_chord().cloned() {
-            self.play_current_chord(&chord);
+        // Reset rhythm state for new chord
+        self.rhythm_state.reset();
+
+        // For Whole style, play immediately on chord change
+        // For rhythm patterns, the first hit will be triggered by update()
+        if self.rhythm_state.style == RhythmStyle::Whole {
+            if let Some(chord) = self.current_chord().cloned() {
+                self.play_current_chord(&chord);
+            }
         }
     }
 
     fn play_current_chord(&mut self, chord: &Chord) {
+        self.play_chord_hit(chord, 0.8);
+    }
+
+    /// Play a chord hit with specified velocity (0.0-1.0)
+    fn play_chord_hit(&mut self, chord: &Chord, velocity: f32) {
         // Use voicing system to get properly voiced notes
         let voiced = self.current_voicing.voice_chord(
             chord,
@@ -274,7 +297,10 @@ impl App {
         notes.sort();
         notes.dedup();
 
-        let _ = self.audio_manager.play_chord(&notes, 80);
+        // Scale velocity to MIDI range (0-127)
+        let midi_velocity = (velocity * 127.0).clamp(1.0, 127.0) as u8;
+
+        let _ = self.audio_manager.play_chord(&notes, midi_velocity);
     }
 
     pub fn increase_tempo(&mut self) {
@@ -306,6 +332,16 @@ impl App {
             r if r < 0.63 => 0.67,
             _ => 0.5,
         };
+    }
+
+    /// Cycle rhythm style
+    pub fn cycle_rhythm(&mut self) {
+        self.rhythm_state.cycle_style();
+    }
+
+    /// Get current rhythm style name
+    pub fn rhythm_name(&self) -> &'static str {
+        self.rhythm_state.style.name()
     }
 
     /// Enter LEGO Listen mode

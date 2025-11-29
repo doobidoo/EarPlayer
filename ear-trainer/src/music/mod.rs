@@ -2,6 +2,7 @@ pub mod bricks;
 pub mod chord;
 pub mod joins;
 pub mod progression;
+pub mod rhythm;
 pub mod scale;
 pub mod standards;
 pub mod theory;
@@ -11,6 +12,7 @@ pub use bricks::{Brick, BrickCategory, BrickChord, BrickLibrary, QuizDifficulty,
 pub use chord::{Chord, ChordQuality, ChordTone, Note};
 pub use joins::{CircleOfFourths, Join, JoinLibrary};
 pub use progression::{ChordChange, Progression, ProgressionLibrary};
+pub use rhythm::{RhythmHit, RhythmState, RhythmStyle};
 pub use scale::{Mode, Scale, ScaleType};
 pub use standards::{Standard, StandardsLibrary, StandardDifficulty};
 pub use theory::{ChordScaleMatcher, GuideTone, VoiceLeading};

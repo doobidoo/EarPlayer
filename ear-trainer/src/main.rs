@@ -344,7 +344,7 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
     ]);
 
     if let Some(prog) = app.current_progression() {
-        // Build voicing/swing info
+        // Build voicing/swing/rhythm info
         let voicing_text = format!("{:?}", app.current_voicing);
         let swing_text = if app.swing_enabled {
             let ratio_name = match app.swing_ratio {
@@ -356,6 +356,7 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
         } else {
             "Swing: Off".to_string()
         };
+        let rhythm_text = app.rhythm_name();
 
         let tempo_line = Line::from(vec![
             Span::styled("Tempo: ", Style::default().fg(Color::Gray)),
@@ -379,6 +380,12 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
             Span::styled(
                 swing_text,
                 Style::default().fg(if app.swing_enabled { Color::Green } else { Color::DarkGray }),
+            ),
+            Span::raw("  |  "),
+            Span::styled("Rhythm: ", Style::default().fg(Color::Gray)),
+            Span::styled(
+                rhythm_text,
+                Style::default().fg(Color::LightBlue),
             ),
         ]);
 
@@ -437,6 +444,7 @@ fn render_help(f: &mut Frame, app: &App) {
         Line::from("  V          - Cycle voicing type"),
         Line::from("  w          - Toggle swing feel"),
         Line::from("  W          - Cycle swing ratio"),
+        Line::from("  r          - Cycle rhythm style"),
         Line::from("  [/]        - Scroll timeline left/right"),
         Line::from("  m          - Cycle audio: MIDI -> Synth -> BLE MIDI"),
         Line::from("  b          - Force BLE MIDI rescan"),

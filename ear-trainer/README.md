@@ -42,6 +42,17 @@ Based on Conrad Cork's approach to jazz harmony, breaking standards into reusabl
   - Light swing (0.58)
   - Hard swing (0.67)
 
+### Rhythm Patterns (Band-in-a-Box Style)
+- **6 Comping Styles** for realistic chord accompaniment:
+  - Whole (sustained chords - original behavior)
+  - Quarter (simple quarter notes)
+  - Jazz (Charleston rhythm)
+  - Swing (active swing comping with triplet feel)
+  - Bossa (classic bossa nova syncopation)
+  - Funk (16th note funk pattern)
+- Cycle through styles with `r` key
+- Each pattern has varied velocities for dynamic feel
+
 ### Intelligent Chord-Scale Matching
 - Automatic scale/mode selection for each chord type:
   - Major 7th → Ionian or Lydian
@@ -134,6 +145,7 @@ cargo run --release
 - `V` - Cycle voicing type (Full/Shell/RootlessA/RootlessB/Drop2)
 - `w` - Toggle swing feel
 - `W` - Cycle swing ratio (Straight/Light/Hard)
+- `r` - Cycle rhythm style (Whole/Quarter/Jazz/Swing/Bossa/Funk)
 - `m` - Cycle audio mode (MIDI -> Synth -> BLE MIDI)
 - `b` - Force BLE MIDI rescan
 - `h` - Toggle help screen
@@ -344,6 +356,7 @@ ear-trainer/
 │   │   ├── scale.rs         - Scale/mode definitions
 │   │   ├── progression.rs   - Progression library
 │   │   ├── theory.rs        - Voice leading analysis
+│   │   ├── rhythm.rs        - Band-in-a-Box style comping patterns
 │   │   ├── bricks.rs        - LEGO Bricks patterns
 │   │   ├── joins.rs         - Key transition patterns
 │   │   ├── voicings.rs      - Jazz voicing algorithms
