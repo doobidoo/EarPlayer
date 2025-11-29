@@ -1,5 +1,7 @@
+pub mod bass;
 pub mod bricks;
 pub mod chord;
+pub mod drums;
 pub mod joins;
 pub mod progression;
 pub mod rhythm;
@@ -8,8 +10,10 @@ pub mod standards;
 pub mod theory;
 pub mod voicings;
 
+pub use bass::{BassNote, BassState, BassStyle};
 pub use bricks::{Brick, BrickCategory, BrickChord, BrickLibrary, QuizDifficulty, ScaleDegree};
 pub use chord::{Chord, ChordQuality, ChordTone, Note};
+pub use drums::{DrumHit, DrumState, DrumStyle};
 pub use joins::{CircleOfFourths, Join, JoinLibrary};
 pub use progression::{ChordChange, Progression, ProgressionLibrary};
 pub use rhythm::{RhythmHit, RhythmState, RhythmStyle};

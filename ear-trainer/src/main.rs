@@ -357,35 +357,43 @@ fn render_status_bar(f: &mut Frame, app: &App, area: Rect) {
             "Swing: Off".to_string()
         };
         let rhythm_text = app.rhythm_name();
+        let bass_text = app.bass_name();
+        let drums_text = app.drums_name();
 
         let tempo_line = Line::from(vec![
-            Span::styled("Tempo: ", Style::default().fg(Color::Gray)),
             Span::styled(
-                format!("{:.0} BPM", prog.tempo),
+                format!("{:.0}bpm", prog.tempo),
                 Style::default().fg(Color::Yellow),
             ),
-            Span::raw("  |  "),
-            Span::styled("Key: ", Style::default().fg(Color::Gray)),
+            Span::raw(" "),
             Span::styled(
                 prog.key.name(),
                 Style::default().fg(Color::Magenta),
             ),
-            Span::raw("  |  "),
-            Span::styled("Voice: ", Style::default().fg(Color::Gray)),
+            Span::raw(" "),
             Span::styled(
-                voicing_text,
+                format!("V:{}", format!("{:?}", app.current_voicing).chars().take(4).collect::<String>()),
                 Style::default().fg(Color::Cyan),
             ),
-            Span::raw("  |  "),
+            Span::raw(" "),
             Span::styled(
-                swing_text,
+                if app.swing_enabled { "Sw" } else { "--" },
                 Style::default().fg(if app.swing_enabled { Color::Green } else { Color::DarkGray }),
             ),
-            Span::raw("  |  "),
-            Span::styled("Rhythm: ", Style::default().fg(Color::Gray)),
+            Span::raw(" "),
             Span::styled(
-                rhythm_text,
+                format!("R:{}", rhythm_text),
                 Style::default().fg(Color::LightBlue),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!("B:{}", bass_text),
+                Style::default().fg(Color::LightYellow),
+            ),
+            Span::raw(" "),
+            Span::styled(
+                format!("D:{}", drums_text),
+                Style::default().fg(Color::LightRed),
             ),
         ]);
 
@@ -444,7 +452,9 @@ fn render_help(f: &mut Frame, app: &App) {
         Line::from("  V          - Cycle voicing type"),
         Line::from("  w          - Toggle swing feel"),
         Line::from("  W          - Cycle swing ratio"),
-        Line::from("  r          - Cycle rhythm style"),
+        Line::from("  r          - Cycle rhythm style (chord comping)"),
+        Line::from("  B          - Cycle bass style (walking bass)"),
+        Line::from("  D          - Cycle drum style"),
         Line::from("  [/]        - Scroll timeline left/right"),
         Line::from("  m          - Cycle audio: MIDI -> Synth -> BLE MIDI"),
         Line::from("  b          - Force BLE MIDI rescan"),

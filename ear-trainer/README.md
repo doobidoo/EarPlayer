@@ -53,6 +53,29 @@ Based on Conrad Cork's approach to jazz harmony, breaking standards into reusabl
 - Cycle through styles with `r` key
 - Each pattern has varied velocities for dynamic feel
 
+### Walking Bass
+- **6 Bass Styles** for accompaniment:
+  - Off (no bass)
+  - Root (root notes only on beat 1)
+  - Root-5th (root and fifth)
+  - Walking (quarter note walking bass line)
+  - Latin (bossa nova style with anticipations)
+  - Funk (syncopated funk bass)
+- Cycle through styles with `B` key (Shift+b)
+- Follows chord changes with proper voice leading
+
+### Drum Patterns
+- **7 Drum Styles** using General MIDI drums:
+  - Off (no drums)
+  - Click (simple hi-hat metronome)
+  - Jazz (ride cymbal "spang-a-lang" pattern)
+  - Brushes (soft brush feel)
+  - Bossa (classic bossa nova with cross-stick)
+  - Funk (16th note funk beat with ghost notes)
+  - Rock (basic rock beat)
+- Cycle through styles with `D` key (Shift+d)
+- Each pattern has authentic velocity variations
+
 ### Intelligent Chord-Scale Matching
 - Automatic scale/mode selection for each chord type:
   - Major 7th → Ionian or Lydian
@@ -146,6 +169,8 @@ cargo run --release
 - `w` - Toggle swing feel
 - `W` - Cycle swing ratio (Straight/Light/Hard)
 - `r` - Cycle rhythm style (Whole/Quarter/Jazz/Swing/Bossa/Funk)
+- `B` - Cycle bass style (Off/Root/Root-5th/Walking/Latin/Funk)
+- `D` - Cycle drum style (Off/Click/Jazz/Brushes/Bossa/Funk/Rock)
 - `m` - Cycle audio mode (MIDI -> Synth -> BLE MIDI)
 - `b` - Force BLE MIDI rescan
 - `h` - Toggle help screen
@@ -357,6 +382,8 @@ ear-trainer/
 │   │   ├── progression.rs   - Progression library
 │   │   ├── theory.rs        - Voice leading analysis
 │   │   ├── rhythm.rs        - Band-in-a-Box style comping patterns
+│   │   ├── bass.rs          - Walking bass patterns
+│   │   ├── drums.rs         - Drum patterns (GM drums)
 │   │   ├── bricks.rs        - LEGO Bricks patterns
 │   │   ├── joins.rs         - Key transition patterns
 │   │   ├── voicings.rs      - Jazz voicing algorithms

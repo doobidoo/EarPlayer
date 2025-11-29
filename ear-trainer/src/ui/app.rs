@@ -1,5 +1,5 @@
 use crate::audio::{ActiveBackend, AudioManager, BleStatus};
-use crate::music::{Chord, ChordScaleMatcher, Progression, ProgressionLibrary, RhythmState, RhythmStyle, Scale, VoicingType};
+use crate::music::{BassState, BassStyle, Chord, ChordScaleMatcher, DrumState, DrumStyle, Progression, ProgressionLibrary, RhythmState, RhythmStyle, Scale, VoicingType};
 use super::lego_mode::LegoModeState;
 use super::timeline::TimelineState;
 use std::time::Instant;
@@ -43,6 +43,10 @@ pub struct App {
     pub swing_ratio: f32,
     /// Rhythm state for comping patterns
     pub rhythm_state: RhythmState,
+    /// Bass state for walking bass lines
+    pub bass_state: BassState,
+    /// Drum state for drum patterns
+    pub drum_state: DrumState,
 }
 
 impl App {
@@ -77,6 +81,8 @@ impl App {
             swing_enabled: false,
             swing_ratio: 0.5, // Straight timing by default
             rhythm_state: RhythmState::new(),
+            bass_state: BassState::new(),
+            drum_state: DrumState::new(),
         };
         app.refresh_timeline();
         app
@@ -240,11 +246,24 @@ impl App {
             self.current_beat =
                 (elapsed.as_millis() as f32 / beat_duration_ms as f32) % change_duration;
 
-            // Check if rhythm pattern should trigger a hit
+            // Check if rhythm pattern should trigger a chord hit
             if let Some((velocity, _duration)) = self.rhythm_state.check_hit(self.current_beat, change_duration) {
                 if let Some(chord) = self.current_chord().cloned() {
                     self.play_chord_hit(&chord, velocity);
                 }
+            }
+
+            // Check if bass should trigger a note
+            if let Some(chord) = self.current_chord().cloned() {
+                if let Some((midi_note, velocity)) = self.bass_state.check_note(self.current_beat, change_duration, &chord) {
+                    self.play_single_note(midi_note, velocity);
+                }
+            }
+
+            // Check if drums should trigger hits
+            let drum_hits = self.drum_state.check_hits(self.current_beat, change_duration);
+            for (midi_note, velocity) in drum_hits {
+                self.play_drum_hit(midi_note, velocity);
             }
 
             // Check if we should move to next chord
@@ -266,8 +285,10 @@ impl App {
         self.current_chord_idx = (self.current_chord_idx + 1) % num_changes;
         self.last_chord_change = Some(Instant::now());
 
-        // Reset rhythm state for new chord
+        // Reset rhythm, bass, and drum states for new chord
         self.rhythm_state.reset();
+        self.bass_state.reset();
+        self.drum_state.reset();
 
         // For Whole style, play immediately on chord change
         // For rhythm patterns, the first hit will be triggered by update()
@@ -301,6 +322,20 @@ impl App {
         let midi_velocity = (velocity * 127.0).clamp(1.0, 127.0) as u8;
 
         let _ = self.audio_manager.play_chord(&notes, midi_velocity);
+    }
+
+    /// Play a single note (for bass)
+    fn play_single_note(&mut self, midi_note: u8, velocity: f32) {
+        let midi_velocity = (velocity * 127.0).clamp(1.0, 127.0) as u8;
+        let _ = self.audio_manager.play_chord(&[midi_note], midi_velocity);
+    }
+
+    /// Play a drum hit (uses GM drum channel)
+    fn play_drum_hit(&mut self, midi_note: u8, velocity: f32) {
+        let midi_velocity = (velocity * 127.0).clamp(1.0, 127.0) as u8;
+        // For now, use the same play_chord method - synth will handle it
+        // In a full implementation, this would use MIDI channel 10 for drums
+        let _ = self.audio_manager.play_chord(&[midi_note], midi_velocity);
     }
 
     pub fn increase_tempo(&mut self) {
@@ -342,6 +377,26 @@ impl App {
     /// Get current rhythm style name
     pub fn rhythm_name(&self) -> &'static str {
         self.rhythm_state.style.name()
+    }
+
+    /// Cycle bass style
+    pub fn cycle_bass(&mut self) {
+        self.bass_state.cycle_style();
+    }
+
+    /// Get current bass style name
+    pub fn bass_name(&self) -> &'static str {
+        self.bass_state.style.name()
+    }
+
+    /// Cycle drum style
+    pub fn cycle_drums(&mut self) {
+        self.drum_state.cycle_style();
+    }
+
+    /// Get current drum style name
+    pub fn drums_name(&self) -> &'static str {
+        self.drum_state.style.name()
     }
 
     /// Enter LEGO Listen mode
